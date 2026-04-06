@@ -50,4 +50,8 @@ const config = {
     }
 }
 
+// Backward-compatible aliases for existing imports that read uppercase keys.
+config.NODE_ENV = config.node_env;
+config.PORT = config.port;
+
 export default config;

@@ -8,10 +8,9 @@ services:
       POSTGRES_PASSWORD: om
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/init-postgres.sql
     networks:
       - api-monitoring-network
     restart: unless-stopped
@@ -86,7 +85,7 @@ services:
       PG_PORT: 5432
       PG_DATABASE: api_monitoring
       PG_USER: postgres
-      PG_PASSWORD: rahul
+      PG_PASSWORD: om
       # RabbitMQ (Docker container)
       RABBITMQ_URL: amqp://api_user:secure_password@rabbitmq:5672/api_monitoring
       RABBITMQ_QUEUE: api_hits

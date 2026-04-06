@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "dev": "nodemon server/src/server.js",
     "processor": "node src/modules/processor/consumer.js",
     "init": "node init-system.js",
     "init:env": "node init-system.js --generate-env"
