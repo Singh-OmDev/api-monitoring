@@ -1,4 +1,3 @@
-
 import config from "../../../shared/config/index.js";
 import { APPLICATION_ROLES } from "../../../shared/constants/roles.js";
 import ResponseFormatter from "../../../shared/utils/responseFormatter.js"

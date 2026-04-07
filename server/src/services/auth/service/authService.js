@@ -1,4 +1,3 @@
-
 import config from "../../../shared/config/index.js";
 import AppError from "../../../shared/utils/AppError.js";
 import jwt from "jsonwebtoken";
