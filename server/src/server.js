@@ -1,151 +1,187 @@
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
 
-import config from "./shared/config/index.js";
-import logger from "./shared/config/logger.js";
-import mongodb from "./shared/config/mongodb.js";
-import postgres from "./shared/config/postgres.js";
-import rabbitmq from "./shared/config/rabbitmq.js";
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import config from './shared/config/index.js';
+import logger from './shared/config/logger.js';
+import mongodb from './shared/config/mongodb.js';
+import postgres from './shared/config/postgres.js';
+import rabbitmq from './shared/config/rabbitmq.js';
+import errorHandler from './shared/middlewares/errorHandler.js';
+import ResponseFormatter from './shared/utils/responseFormatter.js';
+import cookieParser from "cookie-parser"
 
-import errorHandler from "./shared/middlewares/errorHandler.js";
-import ResponseFormatter from "./shared/utils/responseFormatter.js";
+// Routers
+import authRouter from "./services/auth/routes/authRouter.js";
+import clientRouter from './services/client/routes/clientRoutes.js';
+import ingestRouter from "./services/ingest/routes/ingestRoutes.js"
 
+/**
+ * Initialize Express app
+ */
 const app = express();
 
 /**
  * Middlewares
  */
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: true,
+    credentials: true
+}));
+app.use(cookieParser())
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Request logger
-app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.path}`, {
-    ip: req.ip,
-    userAgent: req.headers["user-agent"],
-  });
-  next();
-});
-
 /**
- * Health check
+ * Request logging middleware
+ * Logs the HTTP method, path, IP address, and user agent for each incoming request.
  */
-app.get("/health", (req, res) => {
-  res.status(200).json(
-    ResponseFormatter.success(
-      {
-        status: "healthy",
-        timestamp: new Date().toISOString(),
-        uptime: process.uptime(),
-      },
-      "Service is healthy"
-    )
-  );
+app.use((req, res, next) => {
+    logger.info(`${req.method} ${req.path}`, {
+        ip: req.ip,
+        userAgent: req.headers['user-agent']
+    });
+    next()
+})
+
+/**
+ * Health check endpoint
+ */
+app.get('/health', (req, res) => {
+    res.status(200).json(
+        ResponseFormatter.success(
+            {
+                status: 'healthy',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime(),
+            },
+            'Service is healthy'
+        )
+    );
 });
 
 /**
- * Root route
+ * Root endpoint
+ * Provides basic information about the API service and available endpoints.
  */
 app.get("/", (req, res) => {
-  res.status(200).json(
-    ResponseFormatter.success(
-      {
-        service: "API Hit Monitoring System",
-        version: "1.0.0",
-      },
-      "API running"
+    res.status(200).json(
+        ResponseFormatter.success(
+            {
+                service: 'API Hit Monitoring System',
+                version: '1.0.0',
+                endpoints: {
+                    health: '/health',
+                    auth: '/api/auth',
+                    ingest: '/api/hit',
+                    analytics: '/api/analytics',
+                },
+            },
+            'API Hit Monitoring Service'
+        )
     )
-  );
 });
 
 /**
- * 404
+ * API Routes
+ */
+app.use("/api/auth", authRouter);
+app.use("/api/hit", ingestRouter)
+app.use("/api", clientRouter)
+
+/**
+ * 404 Handler
  */
 app.use((req, res) => {
-  res.status(404).json(ResponseFormatter.error("Endpoint not found", 404));
-});
+    res.status(404).json(ResponseFormatter.error("Endpoint not found", 404))
+})
+
+app.use(errorHandler)
 
 /**
- * Error handler
- */
-app.use(errorHandler);
-
-/**
- * Initialize connections
+ * Initialize database connections and start the server
  */
 async function initializeConnection() {
-  logger.info("Initializing database connections...");
+    try {
+        logger.info("Initializing database connections...");
 
-  await mongodb.connect();
-  await postgres.testConnection();
-  await rabbitmq.connect();
+        // Connect to MongoDB;
+        await mongodb.connect();
 
-  logger.info("All connections established successfully");
+        // Connect to PG;
+        await postgres.testConnection();
+
+        // Connect to RabbitMQ;
+        await rabbitmq.connect();
+
+        logger.info("All connections established successfully");
+    } catch (error) {
+        logger.error("Failed to initialize connections:", error);
+        throw error;
+    }
 }
 
 /**
- * Start server
+ * Start the Express server after establishing database connections.
+ * Also sets up graceful shutdown handlers for SIGINT and SIGTERM signals.
+ * On shutdown, it closes the HTTP server and all database connections before exiting the process.
+ * If any error occurs during startup or shutdown, it logs the error and exits with a non-zero status code.
  */
 async function startServer() {
-  try {
-    await initializeConnection();
+    try {
+        await initializeConnection();
 
-    const PORT = config.PORT || 5000;
+        const server = app.listen(config.port, () => {
+            logger.info(`Server started on port ${config.port}`);
+            logger.info(`Environment: ${config.node_env}`);
+            logger.info(`API available at: http://localhost:${config.port}`);
+        });
 
-    const server = app.listen(PORT, () => {
-      logger.info(`Server started on port ${PORT}`);
-      logger.info(`Environment: ${config.NODE_ENV}`);
-      logger.info(`API: http://localhost:${PORT}`);
-    });
 
-    /**
-     * Graceful shutdown
-     */
-    const gracefulShutdown = async (signal) => {
-      logger.info(`${signal} received, shutting down...`);
+        const gracefulShutdown = async (signal) => {
+            logger.info(`${signal} received, shutting down gracefully...`);
 
-      server.close(async () => {
-        try {
-          await mongodb.disconnect();
-          await postgres.close();
-          await rabbitmq.close();
+            server.close(async () => {
+                logger.info("HTTP server closed");
 
-          logger.info("All connections closed");
-          process.exit(0);
-        } catch (error) {
-          logger.error("Shutdown error:", error);
-          process.exit(1);
+                try {
+                    await mongodb.disconnect();
+                    await postgres.close();
+                    await rabbitmq.close();
+                    logger.info('All connections closed, exiting process');
+                    process.exit(0);
+                } catch (error) {
+                    logger.error('Error during shutdown:', error);
+                    process.exit(1);
+                }
+            })
+
+            setTimeout(() => {
+                logger.error("Forced shutdown")
+                process.exit(1);
+            }, 10000);
+
         }
-      });
 
-      setTimeout(() => {
-        logger.error("Force shutdown");
+        process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+        process.on("SIGINT", () => gracefulShutdown("SIGINT"));
+
+        // Handle uncaught exceptions
+        process.on('uncaughtException', (error) => {
+            logger.error('Uncaught Exception:', error);
+            gracefulShutdown('uncaughtException');
+        });
+
+        process.on('unhandledRejection', (reason, promise) => {
+            logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+            gracefulShutdown('unhandledRejection');
+        });
+
+    } catch (error) {
+        logger.error('Failed to start server:', error);
         process.exit(1);
-      }, 10000);
-    };
-
-    // Signals
-    process.on("SIGTERM", gracefulShutdown);
-    process.on("SIGINT", gracefulShutdown);
-
-    // Errors
-    process.on("uncaughtException", (error) => {
-      logger.error("Uncaught Exception:", error);
-      gracefulShutdown("uncaughtException");
-    });
-
-    process.on("unhandledRejection", (reason) => {
-      logger.error("Unhandled Rejection:", reason);
-      gracefulShutdown("unhandledRejection");
-    });
-
-  } catch (error) {
-    logger.error("Failed to start server:", error);
-    process.exit(1);
-  }
+    }
 }
 
-startServer();
+startServer()
