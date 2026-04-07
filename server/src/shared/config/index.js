@@ -1,7 +1,3 @@
-// yaha pe  global configuration settings rakh sakte hai, jaise ki database connection details, API keys, etc.
-// is file ko import karke hum apne application ke kisi bhi part me in settings ka use kar sakte hai.
-
-
 // yaha pr basically ham global level ka config likhege!!
 
 import dotenv from "dotenv"
@@ -47,11 +43,13 @@ const config = {
     rateLimit: {
         windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
         maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '1000', 10), // 1000 req / 15 min per IP
+    },
+
+    cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        expiresIn: 24 * 60 * 60 * 1000
     }
 }
-
-// Backward-compatible aliases for existing imports that read uppercase keys.
-config.NODE_ENV = config.node_env;
-config.PORT = config.port;
 
 export default config;
