@@ -1,4 +1,3 @@
-
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,7 +13,7 @@ import cookieParser from "cookie-parser"
 // Routers
 import authRouter from "./services/auth/routes/authRouter.js";
 import clientRouter from './services/client/routes/clientRoutes.js';
-
+import ingestRouter from "./services/ingest/routes/ingestRoutes.js"
 
 /**
  * Initialize Express app
@@ -87,10 +86,8 @@ app.get("/", (req, res) => {
  * API Routes
  */
 app.use("/api/auth", authRouter);
+app.use("/api/hit", ingestRouter)
 app.use("/api", clientRouter)
-
-
-
 
 /**
  * 404 Handler
